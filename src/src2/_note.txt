@@ -1,0 +1,11 @@
+just in case I write some bad code and can start back from the beginning is the point of this folder
+
+#current tasks
+
+1. split main file into multiple files(done to some degree)
+2. split the file into component and system
+2.1 render file done I think
+2.2 do collision file
+3. simplify collision system
+4. root out numpy system(too slow for my current system will start considering this later on)
+5. eliminate most of yellow errors(should make the ide easier to use)

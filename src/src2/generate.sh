@@ -1,0 +1,1 @@
+python -m cProfile -o profile_data.prof test.py
