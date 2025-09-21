@@ -1,10 +1,6 @@
-from pygame.draw import circle
-
-from ECS import *
 from Physics import  *
-from collections import *
+from Collision import *
 import Vector
-from src2.Collision import CollisionPolygon
 
 
 class Material(Component): # for static and dynamic objects which behave differently
@@ -86,7 +82,7 @@ class CollisionResolvementSystem:
         relVel = Vector.Dot(relVel, normal)
         e = (material1.restitution + material2.restitution) / 2
         misc = -(1+e)/((1/physics1.mass)+(1/physics2.mass)) # this is just formulaic calculations
-        impulse = Vector.scalarMult(misc*relVel, normal)
+        impulse = Vector.scalarMult(misc * relVel, normal)
         physics1.forces.append(impulse)
         physics2.forces.append(Vector.scalarMult(-1, impulse)) # apply in the other direction for rigidbody 2
 
@@ -118,7 +114,7 @@ class CollisionResolvementSystem:
             return mtv
 
     def findCircleToCircle(self,  s1px, s1py, s1c, s2px, s2py, s2c):
-        S2toS1 = Vector.Subtract([s1px,s1py], [s2px,s2py])
+        S2toS1 = Vector.Subtract([s1px, s1py], [s2px, s2py])
         mtv = Vector.Unit(S2toS1)
         distance = Vector.Magnitude(S2toS1)
         depth = s1c.r + s2c.r - distance
@@ -129,7 +125,7 @@ class CollisionResolvementSystem:
         top = s2py -(s2c.height / 2)
         closestX = max(left, min(s1px, left+s2c.width))
         closestY = max(top, min(s1py, top+s2c.height))
-        BA = Vector.Subtract([s1px,s1py], [closestX,closestY])
+        BA = Vector.Subtract([s1px, s1py], [closestX, closestY])
         mtv = Vector.Unit(BA)
         depth = s1c.r - Vector.Magnitude(BA)
         return Vector.scalarMult(depth, mtv)
@@ -141,10 +137,10 @@ class CollisionResolvementSystem:
             A = points[i]
             B = points[(i+1)%n]
             AB = Vector.Subtract(B, A)
-            AC = Vector.Subtract([spx,spy],A)
-            t = max(0, min(1,Vector.Dot(AB, AC)/(Vector.Magnitude(AB)**2))) #I don't think i'll remember how to do this later on but it makes sense
+            AC = Vector.Subtract([spx, spy], A)
+            t = max(0, min(1, Vector.Dot(AB, AC) / (Vector.Magnitude(AB) ** 2))) #I don't think i'll remember how to do this later on but it makes sense
             closest = Vector.Add(A, Vector.scalarMult(t, AB))
-            delta = Vector.Subtract([spx,spy],  closest)
+            delta = Vector.Subtract([spx, spy], closest)
             if Vector.Magnitude(delta) < sc.r:
                 #delta should be our mtv
                 mtv = Vector.Unit(delta)
@@ -191,7 +187,7 @@ class CollisionResolvementSystem:
                     direction = -1  # move t1 away along -axis
                 smallest_depth = depth
                 mtv = axis
-        return Vector.scalarMult(smallest_depth*direction, mtv)
+        return Vector.scalarMult(smallest_depth * direction, mtv)
 
 
 

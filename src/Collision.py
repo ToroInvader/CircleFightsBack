@@ -1,6 +1,3 @@
-import math
-from pydoc_data.topics import topics
-
 from fontTools.misc.bezierTools import epsilon
 
 from ECS import *
@@ -43,7 +40,7 @@ class CollisionPolygon(CollisionComponent):
         for i in range(len(self.points)):
             A = i
             B = (i+1) % len(self.points)
-            AB = Vector.Subtract(self.points[B],self.points[A])
+            AB = Vector.Subtract(self.points[B], self.points[A])
             normal = Vector.Normal(Vector.Unit(AB))
             self.normals.append(normal)
 
@@ -202,10 +199,10 @@ class CollisionSystem:
             A = points[i]
             B = points[(i+1)%n]
             AB = Vector.Subtract(B, A)
-            AC = Vector.Subtract([spx,spy],A)
-            t = max(0, min(1,Vector.Dot(AB, AC)/(Vector.Magnitude(AB)**2))) #I don't think i'll remember how to do this later on but it makes sense
+            AC = Vector.Subtract([spx, spy], A)
+            t = max(0, min(1, Vector.Dot(AB, AC) / (Vector.Magnitude(AB) ** 2))) #I don't think i'll remember how to do this later on but it makes sense
             closest = Vector.Add(A, Vector.scalarMult(t, AB))
-            delta = Vector.Subtract(closest, [spx,spy])
+            delta = Vector.Subtract(closest, [spx, spy])
             if Vector.Magnitude(delta) < sc.r:
                 return True
         if self.pointInPolygon(spx, spy, tc, tpx, tpy):

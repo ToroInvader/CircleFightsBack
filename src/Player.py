@@ -1,14 +1,5 @@
-
-
-from ECS import *
-from Collision import *
-from Physics import *
-from Rendering import *
 from Input import *
-from Physics import *
 from CollisionResolvement import *
-from  Timer import *
-import Vector
 from Effect import *
 
 
@@ -29,9 +20,9 @@ class PlayerSystem:
             motorComp = ecs.get_component(eid, "motorforce")
             timerComp = ecs.get_component(eid, "timer")
             positionComp = ecs.get_component(eid, "position")
-            force = Vector.scalarMult(motorComp.strength,inputComp.inputDir)
+            force = Vector.scalarMult(motorComp.strength, inputComp.inputDir)
             if inputComp.canDash:
-                force = Vector.scalarMult(player.dashStrength*motorComp.strength,inputComp.inputDir)
+                force = Vector.scalarMult(player.dashStrength * motorComp.strength, inputComp.inputDir)
                 timerComp.add(0.25 ,"dashing")
             physicsComp.forces.append(force)
             #effect management

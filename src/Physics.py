@@ -1,8 +1,6 @@
 
 import Vector
 from ECS import *
-from src2.Vector import scalerDiv
-
 
 class Position(Component):
     def __init__(self, x, y):
@@ -62,8 +60,8 @@ class PhysicsSystem:
             self.updatePosition(velocity, position)
 
     def enforceEnvironment(self, p, v, g): #weird name but it just means adding environmental force like gravity and resistance
-        dragForce = Vector.scalarMult(-1*(p.dragFactor*g.drag), v.velocity)
-        gravityForce = Vector.scalarMult(g.gravityStrength*p.localGravityScale,g.gravityDir)
+        dragForce = Vector.scalarMult(-1 * (p.dragFactor * g.drag), v.velocity)
+        gravityForce = Vector.scalarMult(g.gravityStrength * p.localGravityScale, g.gravityDir)
         p.forces.append(dragForce)
         p.forces.append(gravityForce)
 
@@ -71,7 +69,7 @@ class PhysicsSystem:
     def updateAcelerations(p):
         p.resultantForce = PhysicsSystem.findResultant(p)
         p.forces = []
-        p.acceleration = scalerDiv(p.resultantForce, p.mass)
+        p.acceleration = Vector.scalerDiv(p.resultantForce, p.mass)
 
     @staticmethod
     def updateVelocity(p,vel):
