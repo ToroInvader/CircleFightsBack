@@ -23,7 +23,7 @@ class PlayerSystem:
             force = Vector.scalarMult(motorComp.strength, inputComp.inputDir)
             if inputComp.canDash:
                 force = Vector.scalarMult(player.dashStrength * motorComp.strength, inputComp.inputDir)
-                timerComp.add(0.25 ,"dashing")
+                timerComp.add(0.35 ,"dashing")
             physicsComp.forces.append(force)
             #effect management
             for t in timerComp.active:

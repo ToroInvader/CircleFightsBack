@@ -30,6 +30,7 @@ class ECS:
 
     def add_component(self, eid, component: Component):
         self.components[component.type][eid] = component
+        return component
 
     def remove_component(self, eid, component:Component):
         self.components[component.type].pop(eid, None)
