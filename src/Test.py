@@ -107,7 +107,7 @@ def main():
     physics_system = PhysicsSystem(ecs, drag=1)
     player_system = PlayerSystem()
     fps_tracker_system = FPSTrackerSystem()
-    timer_system = TimerSystem()
+    aura_system = AuraSystem()
     effect_system = EffectSystem()
     # endregion
 
@@ -131,10 +131,10 @@ def main():
         #region rendering things, thees are things that matter to rendering only
         position = player_system.getPlayerPos(ecs)
         fps_tracker_system.tick(ecs, clock)
+        aura_system.tick(ecs)
         effect_system.tick(ecs)
         render_system.tick(ecs, position)
         #endregoin
-        timer_system.tick(ecs)
         remover_system.tick(ecs)
 
         pygame.display.flip()

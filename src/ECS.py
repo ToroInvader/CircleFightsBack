@@ -32,8 +32,8 @@ class ECS:
         self.components[component.type][eid] = component
         return component
 
-    def remove_component(self, eid, component:Component):
-        self.components[component.type].pop(eid, None)
+    def remove_component(self, eid,  ctype):
+        self.components[ctype].pop(eid, None)
 
     def has_component(self, eid, *ctypes):
         for ctype in ctypes:

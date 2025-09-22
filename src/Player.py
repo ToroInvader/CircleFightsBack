@@ -1,6 +1,7 @@
 from Input import *
 from CollisionResolvement import *
 from Effect import *
+from Aura import *
 
 
 class PlayerComponent(Component):
@@ -18,19 +19,13 @@ class PlayerSystem:
             inputComp = ecs.get_component(eid, "input")
             physicsComp = ecs.get_component(eid, "physics")
             motorComp = ecs.get_component(eid, "motorforce")
-            timerComp = ecs.get_component(eid, "timer")
-            positionComp = ecs.get_component(eid, "position")
             force = Vector.scalarMult(motorComp.strength, inputComp.inputDir)
             if inputComp.canDash:
                 force = Vector.scalarMult(player.dashStrength * motorComp.strength, inputComp.inputDir)
-                timerComp.add(0.35 ,"dashing")
+                #add aura component here
+                ecs.add_component(eid, AuraComponent(0.25, 3, 0.25))
             physicsComp.forces.append(force)
             #effect management
-            for t in timerComp.active:
-                if t[2] == "dashing":
-                    if t[1] % 3 == 0:
-                        createEffect(ecs, positionComp.position[0], positionComp.position[1], [[-20,5],[10,20],[0,-30],[-10,20],[20,5]], "polygon", colours["blue"], 0,0,0.5,True)
-
     def getPlayerPos(self, ecs:ECS):
         eid =  next(iter(ecs.query("player")))
         pos = ecs.get_component(eid, "position")
@@ -52,7 +47,6 @@ class PlayerSystem:
         ecs.add_component(eid, InputComponent())
         ecs.add_component(eid, RigidBody())
         ecs.add_component(eid, Material(1))
-        ecs.add_component(eid, Timer())
 
 
 
