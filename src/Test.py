@@ -1,6 +1,8 @@
 #this is going to be used to test code that is going to be implemented
 
 import random
+from random import randint
+
 import pygame
 from pygame.locals import *
 from Physics import *
@@ -14,6 +16,9 @@ from FPSTracker import *
 from Player import *
 from Input import *
 from CollisionResolvement import *
+from Damage import *
+from Health import *
+from Enemy import *
 
 
 
@@ -21,16 +26,16 @@ clock = pygame.time.Clock()
 
 def spawnRect(ecs: ECS):
     eid = ecs.create_entity()
-    width = random.randint(1,200)
-    height = random.randint(1,200)
+    width = random.randint(1,500)
+    height = random.randint(1,500)
     mass = random.randint(20,100)
     ecs.add_component(eid, CollisionRect(width, height))
-    ecs.add_component(eid, RenderRect(width, height, colours["red"], True, 0))
-    ecs.add_component(eid, Position(random.randint(-3000, 3000), random.randint(-1500, 1500)))
-    ecs.add_component(eid, Velocity(-1, 1))
-    ecs.add_component(eid, Physics(mass))
+    ecs.add_component(eid, RenderRect(width, height, colours["black"], True, 0))
+    ecs.add_component(eid, Position(random.randint(-3000, 3000), random.randint(-3000, 3000)))
+    #ecs.add_component(eid, Velocity(-1, 1))
+    #ecs.add_component(eid, Physics(mass))
     ecs.add_component(eid, MotorForce(random.randint(1,10)))
-    ecs.add_component(eid, RigidBody())
+    ecs.add_component(eid, StaticBody())
     ecs.add_component(eid, Material(0))
 
 
@@ -39,7 +44,7 @@ def spawnCircle(ecs: ECS):
     mass = random.randint(1,100)
     size = mass
     ecs.add_component(eid, CollisionCircle(size))
-    ecs.add_component(eid, RenderCircle(size , colours["red"], True, 0))
+    ecs.add_component(eid, RenderCircle(size , colours["orange"], True, 0))
     ecs.add_component(eid, Position(random.randint(-3000, 3000), random.randint(-1500, 1500)))
     ecs.add_component(eid, Velocity(-1, 1))
     ecs.add_component(eid, Physics(mass))
@@ -56,7 +61,7 @@ def spawnTriangle(ecs: ECS):
             point = [random.randint(-100,100), random.randint(-100,100)]
         points.append(point)
     ecs.add_component(eid, CollisionPolygon(points))
-    ecs.add_component(eid, RenderPolygon(points, colours["red"], True, 0))
+    ecs.add_component(eid, RenderPolygon(points, colours["orange"], True, 0))
     ecs.add_component(eid, Position(random.randint(-3000, 3000), random.randint(-1500, 1500)))
     ecs.add_component(eid, Velocity(-1, 1))
     ecs.add_component(eid, Physics(20))
@@ -104,6 +109,12 @@ def main():
     render_system = RenderSystem(window, width, height, 3, renderCenter, colours["white"])
     collision_system = CollisionSystem(100)
     collision_resolvement_system = CollisionResolvementSystem()
+    damage_system = DamageSystem()
+    pursuer_system = PursuerSystem()
+    straight_pursuer_system = StraightPursuerSystem()
+    spiral_in_system = SpiralInSystem()
+    burster_system = BursterSystem()
+    looker_system = LookerSystem()
     physics_system = PhysicsSystem(ecs, drag=1)
     player_system = PlayerSystem()
     fps_tracker_system = FPSTrackerSystem()
@@ -111,12 +122,13 @@ def main():
     effect_system = EffectSystem()
     # endregion
 
-    for i in range(300):
-         spawnTriangle(ecs)
-    for i in range(100):
+    for i in range(200):
          spawnRect(ecs)
     for i in range(100):
-         spawnCircle(ecs)
+        spawnEnemy(ecs, random.randint(-3000,3000), random.randint(-3000,3000), 20, 20, 20, 5, 100, 10, "looker", colours["grey"])
+    # for i in range(100):
+    #     spawnCircle(ecs)
+    #     spawnTriangle(ecs)
     player_system.spawnPlayer(ecs)
 
     fps_tracker_system.deployFPSText(ecs)
@@ -124,9 +136,15 @@ def main():
         input_system.tick(ecs)
         events = collision_system.tick(ecs)
         player_system.tick(ecs)
-        #simpleRandomiserSystem(ecs, physics_system)
-        CollisionCollector(ecs, events)
+        #region enemy movement
+        pursuer_system.tick(ecs)
+        straight_pursuer_system.tick(ecs)
+        spiral_in_system.tick(ecs)
+        burster_system.tick(ecs)
+        looker_system.tick(ecs)
+        #endregion
         collision_resolvement_system.tick(ecs, events)
+        damage_system.tick(ecs, events)
         physics_system.tick(ecs)
         #region rendering things, thees are things that matter to rendering only
         position = player_system.getPlayerPos(ecs)
@@ -134,7 +152,7 @@ def main():
         aura_system.tick(ecs)
         effect_system.tick(ecs)
         render_system.tick(ecs, position)
-        #endregoin
+        #endregion
         remover_system.tick(ecs)
 
         pygame.display.flip()

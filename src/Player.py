@@ -2,6 +2,7 @@ from Input import *
 from CollisionResolvement import *
 from Effect import *
 from Aura import *
+from Damage import *
 
 
 class PlayerComponent(Component):
@@ -13,19 +14,18 @@ class PlayerSystem:
 
     def tick(self, ecs: ECS):
         #handle everything a player would do
-        eids = ecs.query("player")
-        for eid in eids:
-            player = ecs.get_component(eid, "player")
-            inputComp = ecs.get_component(eid, "input")
-            physicsComp = ecs.get_component(eid, "physics")
-            motorComp = ecs.get_component(eid, "motorforce")
-            force = Vector.scalarMult(motorComp.strength, inputComp.inputDir)
-            if inputComp.canDash:
-                force = Vector.scalarMult(player.dashStrength * motorComp.strength, inputComp.inputDir)
-                #add aura component here
-                ecs.add_component(eid, AuraComponent(0.25, 3, 0.25))
-            physicsComp.forces.append(force)
-            #effect management
+        eid = next(iter(ecs.query("player")))
+        player = ecs.get_component(eid, "player")
+        inputComp = ecs.get_component(eid, "input")
+        physicsComp = ecs.get_component(eid, "physics")
+        motorComp = ecs.get_component(eid, "motorforce")
+        force = Vector.scalarMult(motorComp.strength, inputComp.inputDir)
+        if inputComp.canDash:
+            force = Vector.scalarMult(player.dashStrength * motorComp.strength, inputComp.inputDir)
+            #add aura component here
+            ecs.add_component(eid, AuraComponent(0.25, 3, 0.25))
+        physicsComp.forces.append(force)
+
     def getPlayerPos(self, ecs:ECS):
         eid =  next(iter(ecs.query("player")))
         pos = ecs.get_component(eid, "position")
@@ -47,6 +47,8 @@ class PlayerSystem:
         ecs.add_component(eid, InputComponent())
         ecs.add_component(eid, RigidBody())
         ecs.add_component(eid, Material(1))
+        ecs.add_component(eid, Damage(1))
+        ecs.add_component(eid, Knockbackable(0))
 
 
 

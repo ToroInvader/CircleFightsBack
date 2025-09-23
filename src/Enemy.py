@@ -1,100 +1,164 @@
-from Entity import  * #enemies are composed from entity
+import math
+import random
+
 from  ECS import *
+from Collision import *
+from Rendering import *
+from Physics import *
+from CollisionResolvement import *
+import Vector
+from Damage import *
 
-#our enemy entity
-class Enemy(Entity): #all enemies are squares i don't care about your opinion
 
-    collider: CollisionRect  # tell the IDE the refined type
+#region general enemy stuff
 
-    def __init__(self, x, y, width, height, mass, force, dmg, hp, kb, localInvincibility, AI, element, colour):
-        super().__init__(CollisionRect(width,height), x, y, mass, colour)
-        self.collider : CollisionRect # cast into it a collisionRect
-        self.element = element #objective convert to an ecs approach instead of text
-        self.dmg = dmg
-        self.force = force
-        self.hp = hp
-        self.kb = kb # good ol knockback
-        self.AI = AI
-        self.direction = np.empty(2)
-        self.localInvincibility = localInvincibility
-        self.hits = {}
+class Enemy(Component): # A glorified tag for now(like what do i put here?)
+
+    def __init__(self):
+        super().__init__("enemy")
+
+def spawnEnemy(ecs, x, y, width, height, mass, speed, kb, damage, type, colour):
+    eid = ecs.create_entity()
+    ecs.add_component(eid, CollisionRect(width, height))
+    ecs.add_component(eid, RenderRect(width, height, colour, True, 0))
+    ecs.add_component(eid, Position(x, y))
+    ecs.add_component(eid, Velocity(0, 0))
+    ecs.add_component(eid, Physics(mass))
+    motorforce = ecs.add_component(eid, MotorForce(speed))
+    ecs.add_component(eid, RigidBody())
+    ecs.add_component(eid, Material(0))
+    ecs.add_component(eid, KnockBack(kb))
+    ecs.add_component(eid, Damage(damage))
+    if(type=="pursuer"):
+        ecs.add_component(eid, Pursuer())
+    elif(type=="straightpursuer"):
+        ecs.add_component(eid, StraightPursuer())
+    elif type=="spiralin":
+        ecs.add_component(eid, SpiralIn())
+    elif type=="burster":
+        ecs.add_component(eid, Burster(random.randint(1,3),10))
+        motorforce.strength = speed*speed
+    elif type=="looker":
+        ecs.add_component(eid, Looker([random.randint(-300,300), random.randint(-300,300)]))
+    #else dummy AI ig
+
+#endregion
 
 #region movement patterns
-class Pursuer():  #an AI that always chases the player
+#le components
+class Pursuer(Component):  #an AI that always chases the player
 
     def __init__(self):
-        self.type = "Pursuer"
+        super().__init__("pursuer")
 
-    def move(self, ownX, ownY ,px, py): #player x and player y for px and py respectively position returns a 2d unit vector also
-        dmovement = np.array([px - ownX, py - ownY])
-        dmovement /= np.linalg.norm(dmovement) # I don't think this will ever be 0
-        return dmovement
+class PursuerSystem:
 
-class StraightPursuer():
+    def tick(self, ecs: ECS):
+        #grab the player position
+        eid = next(iter(ecs.query("player")))
+        playerPos = ecs.get_component(eid, "position")
+        for id in ecs.query("pursuer", "position","physics", "motorforce"):
+            enemyPos =  ecs.get_component(id, "position")
+            enemyPhysics = ecs.get_component(id, "physics")
+            enemyMotor = ecs.get_component(id, "motorforce")
+            direction = Vector.Unit(Vector.Subtract(playerPos.position, enemyPos.position))
+            enemyPhysics.forces.append(Vector.scalarMult(enemyMotor.strength, direction))
+
+class StraightPursuer(Component):
 
     def __init__(self):
-        self.type = "StraightPursuer"
+        super().__init__("straightpursuer")
 
-    def move(self, ownX, ownY ,px, py): #player x and player y for px and py respectively position returns a 2d unit vector also
-        dx = px - ownX
-        dy = py - ownY
-        if abs(dx) > abs(dy):
-            dmovement = np.array([dx, 0])
-        else:
-            dmovement = np.array([0, dy])
+class StraightPursuerSystem():
 
-        dmovement /= np.linalg.norm(dmovement)
-        return dmovement
+    def tick(self, ecs: ECS):
+        # grab the player position
+        eid = next(iter(ecs.query("player")))
+        playerPos = ecs.get_component(eid, "position")
+        for id in ecs.query("straightpursuer", "position", "physics", "velocity","motorforce"):
+            enemyPos = ecs.get_component(id, "position")
+            enemyPhysics = ecs.get_component(id, "physics")
+            enemyVelocity = ecs.get_component(id, "velocity")
+            enemyMotor = ecs.get_component(id, "motorforce")
+            xDiff = playerPos.position[0] - enemyPos.position[0]
+            yDiff = playerPos.position[1] - enemyPos.position[1]
+            if abs(xDiff) > abs(yDiff):
+                enemyPhysics.forces.append(Vector.scalarMult(enemyMotor.strength,[math.copysign(1,xDiff), 0]))
+                enemyVelocity.velocity[1] = 0
+            else:
+                enemyPhysics.forces.append(Vector.scalarMult(enemyMotor.strength,[0, math.copysign(1,yDiff)]))
+                enemyVelocity.velocity[0] = 0
 
-class SpiralIn():
+class SpiralIn(Component):
+
+    def __init__(self):
+        super().__init__("spiralin")
+        self.orientation = 1 if random.randint(1,2)==1 else -1 # an integer 1 for clockwise i think and -1 for counter clockwise
 
 
-    def __init__(self, clockwise): # a boolean to change directions
-        self.clockwise = clockwise
-        self.type = "SpiralIn"
+class SpiralInSystem():
+    def tick(self, ecs):
+        # grab the player position
+        eid = next(iter(ecs.query("player")))
+        playerPos = ecs.get_component(eid, "position")
+        for id in ecs.query("spiralin", "position", "physics", "motorforce"):
+            enemyPos = ecs.get_component(id, "position")
+            enemyPhysics = ecs.get_component(id, "physics")
+            enemyMotor = ecs.get_component(id, "motorforce")
+            spiralIn = ecs.get_component(id, "spiralin")
+            direction = Vector.Unit(Vector.Subtract(playerPos.position, enemyPos.position))
+            normal = Vector.scalarMult(spiralIn.orientation, Vector.Normal(direction))
+            trueDirection = Vector.Unit(Vector.Add(direction, normal))
+            enemyPhysics.forces.append(Vector.scalarMult(enemyMotor.strength, trueDirection))
 
-    def move(self, ownX, ownY, px, py):
-        dmovement = np.array([px - ownX, py - ownY])
-        if np.linalg.norm(dmovement) > 2200: # the code exist due to escaping nature of some of the enemies that don't circle in fast enough if they're far away to the point some go outer bounds
-            dmovement /= np.linalg.norm(dmovement)
-            return  dmovement*5
-        perpDmovement = np.array([-dmovement[1], dmovement[0]])
-        if self.clockwise:
-            perpDmovement *= -1
-        dmovement = np.add(dmovement, perpDmovement)
-        dmovement /= np.linalg.norm(dmovement)
-        return  dmovement
-
-class Burster():
-
+class Burster(Component):
 
     def __init__(self, delay, strength):
-        self.type = "Burster"
-        self.time = 0
-        self.delay = delay
+        super().__init__("burster")
+        self.elapsed = 0
+        self.delay = delay*FPS
         self.strength = strength
 
-    def move(self, ownX, ownY, px, py):
-        self.time += 1
-        dmovement = np.array([px - ownX, py - ownY])
-        dmovement /= np.linalg.norm(dmovement)
-        if(self.time == self.delay):
-            self.time = 0
-            return dmovement*self.strength
-        else:
-            return  np.array([0,0])
+class BursterSystem():
 
-class Looker():
+    def tick(self, ecs):
+        eid = next(iter(ecs.query("player")))
+        playerPos = ecs.get_component(eid, "position")
+        for id in ecs.query("burster", "position", "physics", "motorforce"):
+            enemyPos =  ecs.get_component(id, "position")
+            enemyPhysics = ecs.get_component(id, "physics")
+            enemyMotor = ecs.get_component(id, "motorforce")
+            enemyBurster = ecs.get_component(id, "burster")
+            enemyBurster.elapsed += 1
+            if enemyBurster.delay <= enemyBurster.elapsed:
+                enemyBurster.elapsed = 0
+                direction = Vector.Unit(Vector.Subtract(playerPos.position, enemyPos.position))
+                enemyPhysics.forces.append(Vector.scalarMult(enemyMotor.strength*enemyMotor.strength, direction))
 
-    def __init__(self, position):
-        self.position = position
 
-    def move(self, ownX, ownY ,px, py): #player x and player y for px and py respectively position returns a 2d unit vector also
-        px += self.position[0]
-        py += self.position[1]
-        dmovement = np.array([px - ownX, py - ownY])
-        dmovement /= np.linalg.norm(dmovement) # I don't think this will ever be 0
-        return dmovement
+class Looker(Component):
+
+    def __init__(self, relPosition):
+        super().__init__("looker")
+        self.relPosition = relPosition
+
+class LookerSystem:
+
+    def tick(self, ecs: ECS):
+        #grab the player position
+        eid = next(iter(ecs.query("player")))
+        playerPos = ecs.get_component(eid, "position")
+        for id in ecs.query("looker", "position","physics", "motorforce"):
+            enemyPos =  ecs.get_component(id, "position")
+            enemyPhysics = ecs.get_component(id, "physics")
+            enemyMotor = ecs.get_component(id, "motorforce")
+            enemyLooker = ecs.get_component(id, "looker")
+            lookPos = Vector.Add(playerPos.position, enemyLooker.relPosition)
+            direction = Vector.Unit(Vector.Subtract(lookPos, enemyPos.position))
+            enemyPhysics.forces.append(Vector.scalarMult(enemyMotor.strength, direction))
+#le systems
+
+
 #endregion
 
 #region element components
@@ -106,12 +170,6 @@ class Looker():
 #reigon Enemy System
 
 class EnemySystem():
+    pass
 
-    @staticmethod
-    def Spawn(x,y,mass):
-        eid = ECS.create_entity()
-        ECS.add_component(eid, physicsComponent(x,y,mass))
-
-
-
-#endRegion
+#endregion

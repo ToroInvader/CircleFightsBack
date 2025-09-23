@@ -22,11 +22,13 @@ class EffectSystem:
             effect = ecs.get_component(id, "effect")
             render = ecs.get_component(id, "render")
             effect.elapsed += 1 # adjust the timer
-            if effect.fade:
-                render.colour = transparentColour((render.colour[0],render.colour[1],render.colour[2]), ((effect.duration-effect.elapsed)/effect.duration)*255)
             if effect.elapsed >= effect.duration:
                 # give the entity the death mark
                 ecs.add_component(id, Remove())
+                continue
+            if effect.fade:
+                render.colour = transparentColour((render.colour[0],render.colour[1],render.colour[2]), ((effect.duration-effect.elapsed)/effect.duration)*255)
+
 
 def createEffect(ecs, x, y, shape, shapeTag, colour, vx, vy, duration, fade):
     eid = ecs.create_entity()
