@@ -121,14 +121,29 @@ class CollisionResolvementSystem:
         return Vector.scalarMult(depth, mtv)
 
     def findCircleToRect(self, s1px, s1py, s1c, s2px, s2py, s2c):
+        #also we hand down know they're touching
         left = s2px - (s2c.width / 2)
         top = s2py -(s2c.height / 2)
-        closestX = max(left, min(s1px, left+s2c.width))
+        closestX = max(left, min(s1px, left+s2c.width))#finds the closest point on the circle when it's outside
         closestY = max(top, min(s1py, top+s2c.height))
         BA = Vector.Subtract([s1px, s1py], [closestX, closestY])
-        mtv = Vector.Unit(BA)
-        depth = s1c.r - Vector.Magnitude(BA)
+        dist = Vector.Magnitude(BA)
+        print(dist, "dist")
+        print(s1c.r)
+        if dist == 0: # if true we know center is inside the square
+            dx = min(abs(s1px - left), abs(left + s2c.width - s1px))
+            dy = min(abs(s1py - top), abs(top+s2c.height - s1py))
+            if dx < dy:# push on shallow axis
+                mtv = [1, 0] if s1px - s2px > 0 else [-1, 0]
+                depth = dx + s1c.r
+            else:
+                mtv = [0, 1] if s1py - s2py > 0 else [0, -1]
+                depth = dy + s1c.r
+        else: # outside the square
+            mtv = Vector.Unit(BA)
+            depth = s1c.r - dist
         return Vector.scalarMult(depth, mtv)
+
 
     def findCircleToPolygon(self, spx, spy, sc, tpx, tpy, tc):  # t:polygon, s:circle, p:position, c:collider
         points = [[p[0] + tpx, p[1] + tpy] for p in tc.points]

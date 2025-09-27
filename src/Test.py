@@ -44,12 +44,10 @@ def spawnCircle(ecs: ECS):
     mass = random.randint(1,100)
     size = mass
     ecs.add_component(eid, CollisionCircle(size))
-    ecs.add_component(eid, RenderCircle(size , colours["orange"], True, 0))
+    ecs.add_component(eid, RenderCircle(size , colours["black"], True, 0))
     ecs.add_component(eid, Position(random.randint(-3000, 3000), random.randint(-1500, 1500)))
-    ecs.add_component(eid, Velocity(-1, 1))
-    ecs.add_component(eid, Physics(mass))
     ecs.add_component(eid, MotorForce(random.randint(1,10)))
-    ecs.add_component(eid, RigidBody())
+    ecs.add_component(eid, StaticBody())
     ecs.add_component(eid, Material(0))
 
 def spawnTriangle(ecs: ECS):
@@ -125,9 +123,10 @@ def main():
     for i in range(200):
          spawnRect(ecs)
     for i in range(100):
-        spawnEnemy(ecs, random.randint(-3000,3000), random.randint(-3000,3000), 20, 20, 20, 5, 100, 10, "looker", colours["grey"])
-    # for i in range(100):
-    #     spawnCircle(ecs)
+        pass
+     #   spawnEnemy(ecs, random.randint(-3000,3000), random.randint(-3000,3000), 20, 20, 20, 5, 100, 10, "looker", colours["grey"])
+    for i in range(100):
+        spawnCircle(ecs)
     #     spawnTriangle(ecs)
     player_system.spawnPlayer(ecs)
 

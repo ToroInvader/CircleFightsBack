@@ -31,24 +31,24 @@ class PlayerSystem:
         pos = ecs.get_component(eid, "position")
         return pos.position
 
-    def spawnPlayer(self, ecs: ECS):
-        eid = ecs.create_entity()
-        size = 20
-        width = 40
-        height = 40
-        points = [[-20,5],[10,20],[0,-30],[-10,20],[20,5]]
-        ecs.add_component(eid, PlayerComponent(100))
-        ecs.add_component(eid, Position(0,0))
-        ecs.add_component(eid, Velocity(0,0))
-        ecs.add_component(eid, Physics(20, dragFactor=1))
-        ecs.add_component(eid, MotorForce(5))
-        ecs.add_component(eid, RenderPolygon(points, colours["red"], True))
-        ecs.add_component(eid, CollisionPolygon(points))
-        ecs.add_component(eid, InputComponent())
-        ecs.add_component(eid, RigidBody())
-        ecs.add_component(eid, Material(1))
-        ecs.add_component(eid, Damage(1))
-        ecs.add_component(eid, Knockbackable(0))
+def spawnPlayer(self, ecs: ECS):
+    eid = ecs.create_entity()
+    size = 20
+    width = 40
+    height = 40
+    points = [[-20,5],[10,20],[0,-30],[-10,20],[20,5]]
+    ecs.add_component(eid, PlayerComponent(100))
+    ecs.add_component(eid, Position(0,0))
+    ecs.add_component(eid, Velocity(0,0))
+    ecs.add_component(eid, Physics(20, dragFactor=1))
+    ecs.add_component(eid, MotorForce(5))
+    ecs.add_component(eid, RenderCircle(size, colours["red"], True))
+    ecs.add_component(eid, CollisionCircle(size))
+    ecs.add_component(eid, InputComponent())
+    ecs.add_component(eid, RigidBody())
+    ecs.add_component(eid, Material(1))
+    ecs.add_component(eid, Damage(1))
+    ecs.add_component(eid, Knockbackable(0))
 
 
 

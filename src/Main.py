@@ -1,33 +1,506 @@
 #whack initial game play setting shouldn't be here but eh
 
-# V 0.2
+# V 0.1
+
 input("hello circle needs to fight back agaisnt some squares press enter to continue")
 inputdiffculty = int(input("what diffculty do you wanna try 1-10  just type a number the lower number the harder the game (5 is recommended, 2 for rush experience)"))
 inputPowerSlider = int(input("how frequent should powerups be pick 1-10 (5 is recommended i think, 4 for rush experience i think)"))
 inputNumOfEnemies = int(input("how many squares to initially fight off pick any positive integer (5 is recommended, 50 for rush experience)"))
 input("to move use WASD and space to dash and q,e,f to attack good luck, press enter to continue")
 
-
-
-#built in libraries
 import random
-import sys
-#3rd party libraries
 import pygame
 from pygame.locals import *
 import numpy as np
-#my libraries
-from Rendering import *
-from Physics import *
-from Collision import *
-from Enemy import *
-from Entity import *
-from Effect import *
-from Global import *
-
 pygame.init()
 
+
 #region classes
+
+#region renderclasses
+class RenderObject:
+
+    @staticmethod
+    def render(surface, objects):
+        for i in objects:
+            if i.renderType == "circle":
+                pygame.draw.circle(surface, i.colour, (i.renderX, i.renderY), i.r)
+            if i.renderType == "rect":
+                pygame.draw.rect(surface, i.colour, pygame.Rect(i.renderX, i.renderY, i.width, i.height))
+            if i.renderType == "triangle":
+                pygame.draw.polygon(surface, i.colour, ((i.xs[0]+i.renderX,i.ys[0]+i.renderY),(i.xs[1]+i.renderX,i.ys[1]+i.renderY),(i.xs[2]+i.renderX,i.ys[2]+i.renderY)))
+            if i.renderType == "text":
+                surface.blit(i.text, pygame.Rect(i.renderX, i.renderY, i.width, i.height))
+
+
+    @staticmethod
+    def scroll(r, x, y):
+        """ this function updates one render object to be in the correct place if they treat x and y position
+        to be middle of screen. Basically just implements scrolling. The r here stands for a render object. For no scrolling just make x and y 0
+        """
+
+        if r.renderType == "circle" or r.renderType=="rect":
+            r.renderX = r.x - x
+            r.renderY = r.y - y
+        elif r.renderType == "triangle":
+            r.renderX =   r.anchorX - x # for triangles think of the render attribute as just values
+            r.renderY = r.anchorY - y # to translate the triangle accordingly
+
+
+    def __init__(self, renderType, colour):
+        """quick rant circles need x,y to be centre of themselves that is how they're
+        drawn while x,y for rectangles is top left also remember y increases downwards"""
+        self.colour = colour
+        self.renderType = renderType #what type of object we're drawing
+
+class RenderCircle(RenderObject):
+
+    def __init__(self, x, y, r, colour):
+        super().__init__("circle",colour)
+        self.x = x
+        self.y = y
+        self.renderX = x
+        self.renderY = y
+        self.r = r
+
+class RenderRect(RenderObject):
+
+    def __init__(self, x, y, width, height, colour):
+        super().__init__("rect", colour)
+        self.x = x
+        self.y = y
+        self.renderX = x
+        self.renderY = y
+        self.height = height
+        self.width = width
+
+class RenderText(RenderRect):
+
+    def __init__(self,x,y,width,height,colour,size,text):
+        super().__init__(x, y, width, height, colour)
+        self.font = pygame.font.Font('freesansbold.ttf', size)
+        self.renderType = "text"
+        self.text =  self.font.render(text, True, colour)
+
+    def changeText(self, text):
+        self.text = self.font.render(text, True, self.colour)
+
+
+
+
+class RenderTriangle(RenderObject):
+
+    def __init__(self, anchorX, anchorY, x1, x2, x3, y1, y2, y3, colour): # the set of coordinates indicate the points of the triangle
+        super().__init__("triangle", colour)
+        self.anchorX = anchorX # after some thinking /i feel like triangles should be translated using these
+        self.anchorY = anchorY # anchors(ones on screen could typically have anchor (0,0)) it will allow for more easier fitting(like the physics system)
+        self.xs = np.array([x1,x2,x3])
+        self.ys = np.array([y1,y2,y3])
+        self.renderX = anchorX
+        self.renderY = anchorY
+#endregion
+
+class physicsObject:
+
+    @staticmethod
+    def updatePhysics(p): # p is the physics object we're working with
+        p.resultantForce = physicsObject.findResultant(p)
+        p.forces =  np.empty((0, 2))
+        p.acceleration = p.resultantForce / p.mass
+        p.velocity = np.add(p.acceleration, p.velocity)
+        p.position = np.add(p.velocity, p.position)
+
+    @staticmethod
+    def resetPhysics(p):
+        p.resultantForce = 0
+        p.forces = np.empty((0,2))
+        p.acceleration = np.empty((2))
+        p.velocity = np.empty((2))
+
+    @staticmethod
+    def findResultant(p):
+        return np.sum(p.forces, axis=0)
+
+    def __init__(self, x, y, mass):
+        self.position = np.array([x,y])
+        self.velocity = np.empty((2))
+        self.acceleration = np.empty((2))
+        self.resultantForce = np.empty((2))  # sum of forces
+        self.forces = np.empty((0, 2)) # the forces active on it
+        self.mass = mass
+
+    def addForce(self, force): #force is an np 2d array
+        self.forces = np.vstack((self.forces, force))
+
+#region collision object classes hold information about the shape of an object that's it they don't have access to position
+# also handles collision
+class CollisionObject:
+
+    @staticmethod
+    def pointInTriangle(x, y, c, cx, cy): #the maths here get extremely chaotic i'm not explaining it go look up on YouTube how to do this
+        Ax = c.xs[0] + cx
+        Bx = c.xs[1] + cx
+        Cx = c.xs[2] + cx
+        Ay = c.ys[0] + cy
+        By = c.ys[1] + cy
+        Cy = c.ys[2] + cy
+        #the variables above exist so I can write the formulas carefully
+        denom = ((By-Ay)*(Cx-Ax)-(Bx-Ax)*(Cy-Ay))
+        if denom==0:
+            return False
+
+        W1 = (Ax*(Cy-Ay)+(y-Ay)*(Cx-Ax)-x*(Cy-Ay))/denom # i hope the code follows BEDMAS order
+        W2 = (y-Ay-W1*(By-Ay))/(Cy-Ay)
+        return W1 >= 0 and W2 >= 0 and (W1+W2) <= 1
+
+
+    @staticmethod
+    def pointInRect(x, y, c, cx, cy): #c is the collision object with its position as cx and cy
+        return ((cx <= x <= cx + c.width) and
+                (cy <= y <= cy + c.height))
+
+    @staticmethod
+    def pointInCircle(x, y, c, cx, cy):
+        euclideanDistance = np.sqrt(((x-cx)**2)+((y-cy)**2))
+        return euclideanDistance <= c.r
+
+    @staticmethod
+    def linesIntersect(A, B, C, D): #chatgpt made this
+        def ccw(P, Q, R):
+            return (R[1] - P[1]) * (Q[0] - P[0]) > (Q[1] - P[1]) * (R[0] - P[0])
+        return (ccw(A, C, D) != ccw(B, C, D)) and (ccw(A, B, C) != ccw(A, B, D))
+
+    @staticmethod
+    def triangleInTriangle(t1px, t1py, t1c, t2px, t2py, t2c): # utilise Separating Axis Theorem if push comes to shove make the code pure python to optimise the code
+        # grab points A,B,C for t1 and D,E,F for t2
+        A = np.array([t1c.xs[0]+t1px, t1c.ys[0]+t1py])
+        B = np.array([t1c.xs[1]+t1px, t1c.ys[1]+t1py])
+        C = np.array([t1c.xs[2]+t1px, t1c.ys[2]+t1py])
+        D = np.array([t2c.xs[0]+t2px, t2c.ys[0]+t2py])
+        E = np.array([t2c.xs[1]+t2px, t2c.ys[1]+t2py])
+        F = np.array([t2c.xs[2]+t2px, t2c.ys[2]+t2py])
+        # determine unit vectors of separating axes(the nominal vector of each side)
+        separatingAxes = []
+        AB = A-B
+        AB = AB / np.linalg.norm(AB)
+        separatingAxes.append(np.array([-AB[1], AB[0]]))
+        BC = B-C
+        BC = BC / np.linalg.norm(BC)
+        separatingAxes.append(np.array([-BC[1], BC[0]]))
+        CA = C-A
+        CA = CA / np.linalg.norm(CA)
+        separatingAxes.append(np.array([-CA[1], CA[0]]))
+        DE = D-E
+        DE = DE / np.linalg.norm(DE)
+        separatingAxes.append(np.array([-DE[1], DE[0]]))
+        EF = E-F
+        EF = EF / np.linalg.norm(EF)
+        separatingAxes.append(np.array([-EF[1], EF[0]]))
+        FD = F-D
+        FD = FD / np.linalg.norm(FD)
+        separatingAxes.append(np.array([-FD[1], FD[0]]))
+        # determine the scores(which is length of the vector projected onto the separating axes)
+        # of all points for each separating axis
+        for i in separatingAxes:
+            values1 = []
+            values2 = []
+            values1.append(np.dot(A, i))
+            values1.append(np.dot(B, i))
+            values1.append(np.dot(C, i))
+            values2.append(np.dot(D, i))
+            values2.append(np.dot(E, i))
+            values2.append(np.dot(F, i))
+            # now check if the max and min compare well if not instantly return false
+            t1Max = max(values1)
+            t1Min = min(values1)
+            t2Max = max(values2)
+            t2Min = min(values2)
+            if t1Max <= t2Min or t2Max <= t1Min:
+                return False
+        return True
+
+    @staticmethod #chatgpt made this function and turns out little Tim was right all along this code sucks for small numbers like 100 so the first one will be used
+    def triangleInTriangle2(t1px, t1py, t1c, t2px, t2py, t2c):
+        #grab points
+        t1 = np.array([[t1c.xs[i]+t1px, t1c.ys[i]+t1py] for i in range(3)])
+        t2 = np.array([[t2c.xs[i]+t2px, t2c.ys[i]+t2py] for i in range(3)])
+
+        #grab triangle edges
+        edges = np.vstack([
+             t1[[0,1]], t1[[1,2]], t1[[2,0]],
+            t2[[0,1]], t2[[1,2]], t2[[2,0]]
+        ]).reshape(6,2,2)
+
+        #now their perpendicular unit vector equivalent
+        vecs = edges[:,0] -  edges[:, 1]
+        norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+        normals = np.hstack([
+            -vecs[:, [1]],
+            vecs[:, [0]]
+        ]) / norms
+        for axis in normals:
+            proj1 = t1 @ axis
+            proj2 = t2 @ axis
+            if proj1.max() <= proj2.min() or proj2.max() <= proj1.min():
+                return False  # Separating axis found
+        return True
+
+
+
+    @staticmethod
+    def triangleInRect(tpx, tpy, tc, spx, spy, sc): #t:triangle, s:square, p:position, c:collider
+
+        # grab points
+        triPoints = [[tc.xs[i] + tpx, tc.ys[i] + tpy] for i in range(3)]
+        quadPoints = [[spx, spy], [spx + sc.width, spy], [spx, spy + sc.height], [spx + sc.width, spy + sc.height]]
+
+        # check if points of triangle in rectangle
+        for x,y in triPoints:
+            if(CollisionObject.pointInRect(x, y, sc, spx, spy)):
+                return True
+
+        #check if points of rectangle in triangle
+        for x,y in quadPoints:
+            if(CollisionObject.pointInTriangle(x, y, tc, tpx, tpy)):
+                return True
+
+        #check if edges are intersecting
+        # grab edges
+        triEdges = [(triPoints[0], triPoints[1]), (triPoints[1], triPoints[2]), (triPoints[2], triPoints[0])]
+        quadEdges = [
+            (quadPoints[0], quadPoints[1]),
+            (quadPoints[1], quadPoints[2]),
+            (quadPoints[2], quadPoints[3]),
+            (quadPoints[3], quadPoints[0])
+        ]
+        for e1 in quadEdges:
+            for e2 in triEdges:
+                if CollisionObject.linesIntersect(e1[0], e1[1], e2[0], e2[1]):
+                    return True
+        return False
+
+    @staticmethod
+    def triangleInCircle(tpx, tpy, tc, spx, spy, sc):  # t:triangle, s:circle, p:position, c:collider
+        return (CollisionObject.pointInCircle(tpx + tc.xs[0], tpy + tc.ys[0], sc, spx, spy) or
+                CollisionObject.pointInCircle(tpx + tc.xs[1], tpy + tc.ys[1], sc, spx, spy) or
+                CollisionObject.pointInCircle(tpx + tc.xs[2], tpy + tc.ys[2], sc, spx, spy))
+
+    @staticmethod
+    def rectInRect(s1px, s1py, s1c, s2px, s2py, s2c): # numbers used to differentiate the colliders
+        # keep above code for poking apparently and redundancy ig
+        return   (s1px <= s2px+s2c.width and
+                  s1c.width+s1px >= s2px and
+                  s1py <= s2py+s2c.height  and
+                  s1c.height+s1py >= s2py)
+
+
+    @staticmethod
+    def rectInCircle(s1px, s1py, s1c, s2px, s2py, s2c):  # numbers used to differentiate the colliders
+        dy = 0
+        dx = 0
+        if s1py <= s2py <= s1py+s1c.height and s1px <= s2px <= s1px+s1c.width:
+            return True # this means the circle is inside the rect
+        if s1py <= s2py <= s1py+s1c.height:
+            dx = min(abs(s2px - s1px), abs(s2px - (s1px+s1c.width))) #this code might be confusing but it's trying to find the vertical side closer to the circle
+            return dy ** 2 + dx ** 2 <= s2c.r ** 2
+        elif s1px <= s2px <= s1px+s1c.width:
+            dy = min(abs(s2py - s1py), abs(s2py - (s1py+s1c.height))) # same but horizontal
+            return dy ** 2 + dx ** 2 <= s2c.r ** 2
+        else:
+            dx = min(abs(s2px - s1px), abs(s2px - (s1px+s1c.width)))
+            dy = min(abs(s2py - s1py), abs(s2py - (s1py+s1c.height)))
+            return dy ** 2 + dx ** 2 <= s2c.r ** 2 # see if the closest point found is in the circle via Euclidean distance
+
+    @staticmethod
+    def circleInCircle(s1px, s1py, s1c, s2px, s2py, s2c): # most interesting one doesn't rely on point information and least expensive to compute
+        euclideanDistance = np.sqrt(((s1px - s2px) ** 2) + ((s1py - s2py) ** 2))
+        return euclideanDistance < (s1c.r + s2c.r)
+
+
+
+    def __init__(self, type):
+        self.type = type
+
+class CollisionCircle(CollisionObject):
+
+    def __init__(self, r):
+        super().__init__("circle")
+        self.r = r
+
+class CollisionTriangle(CollisionObject):
+
+    def __init__(self, x1, y1, x2, y2, x3, y3):
+        super().__init__("triangle")
+        self.xs = np.array([x1, x2, x3])
+        self.ys = np.array([y1, y2, y3])
+
+        # ensure CounterClockwise property
+        Ax, Ay = self.xs[0], self.ys[0]
+        Bx, By = self.xs[1], self.ys[1]
+        Cx, Cy = self.xs[2], self.ys[2]
+        if (Bx - Ax) * (Cy - Ay) - (By - Ay) * (Cx - Ax) < 0:
+            # Swap B and C to enforce CCW
+            self.xs[1], self.xs[2] = self.xs[2], self.xs[1]
+            self.ys[1], self.ys[2] = self.ys[2], self.ys[1]
+
+class CollisionRect(CollisionObject):
+
+    def __init__(self, width, height):
+        super().__init__("rect")
+        self.width = width
+        self.height = height
+
+#endregion collision object classes
+
+class Entity: # be very careful with this class it'll utilise physics and collision as composition and return a render class when needed
+              # things could get real messy if the class isn't handled correctly
+    def __init__(self, collider: CollisionObject, x, y, mass, colour):
+        self.collider = collider
+        self.physics = physicsObject(x, y, mass)
+        self.colour = colour
+
+    def returnRender(self):
+        if self.collider.type == "triangle":
+            return RenderTriangle(self.physics.position[0], self.physics.position[1], self.collider.xs[0], self.collider.xs[1], self.collider.xs[2], self.collider.ys[0], self.collider.ys[1], self.collider.ys[2], self.colour)
+        elif self.collider.type == "rect":
+            return RenderRect(self.physics.position[0], self.physics.position[1], self.collider.width, self.collider.height, self.colour)
+        elif self.collider.type == "circle":
+            return RenderCircle(self.physics.position[0], self.physics.position[1], self.collider.r, self.colour)
+        else:
+            print("type isn't defined") # in case something goes wrong
+
+
+class Effect(Entity): # used to make fancy effects that's it
+
+    def __init__(self, collider, x, y, mass, colour, time, timeDecrease, velocity, fade): #collider is just here for shape information not to detect collisions
+        super().__init__(collider, x, y, mass, colour)
+        self.totalTime = time # the time it takes for it to decay
+        self.time = time
+        self.timeDecrease = timeDecrease
+        self.velocity = velocity
+        self.fade = fade # boolean to say if value should fade
+
+class Bullet(Entity):
+
+    def __init__(self, collider, x, y, mass, dmg, kb, colour, time, id):
+        super().__init__(collider, x, y, mass, colour)
+        self.id = id # needed for enemies to have local invincibility when a hit a by a specific bullet but still be able to be hit by another also defines type
+        self.time = time
+        self.direction = np.array([0,0])
+        self.relativePos = np.array([0,0])
+        self.dmg = dmg
+        self.kb = kb
+
+class powerUP(Entity):
+
+    #to keep concise and not blown out of proportions powerup generation code will be here
+
+    def __init__(self, collider: CollisionObject, x, y, mass, colour, type): # they all have circle colliders and same size as circle
+        super().__init__(collider, x, y, mass, colour)
+        self.type = type
+        self.time = 60*5
+
+#region enemy time
+class Enemy(Entity): #all enemies are squares i don't care about your opinion
+    def __init__(self, x, y, width, height, mass, force, dmg, hp, kb, localInvincibility, AI, element, colour):
+        super().__init__(CollisionRect(width,height), x, y, mass, colour)
+        self.element = element
+        self.dmg = dmg
+        self.force = force
+        self.hp = hp
+        self.kb = kb # good ol knockback
+        self.AI = AI
+        self.direction = np.empty(2)
+        self.localInvincibility = localInvincibility
+        self.hits = {}
+
+class DmgField(Entity):
+
+    def __init__(self, x, y, width, height, mass ,direction, dmg, kb, colour):
+        super().__init__(CollisionRect(width,height),x,y,mass,colour)
+        self.direction = direction
+        self.dmg = dmg
+        self.kb = kb
+
+
+class Pursuer():  #an AI that always chases the player
+
+    def __init__(self):
+        self.type = "Pursuer"
+
+    def move(self, ownX, ownY ,px, py): #player x and player y for px and py respectively position returns a 2d unit vector also
+        dmovement = np.array([px - ownX, py - ownY])
+        dmovement /= np.linalg.norm(dmovement) # I don't think this will ever be 0
+        return dmovement
+
+class StraightPursuer():
+
+    def __init__(self):
+        self.type = "StraightPursuer"
+
+    def move(self, ownX, ownY ,px, py): #player x and player y for px and py respectively position returns a 2d unit vector also
+        dx = px - ownX
+        dy = py - ownY
+        if abs(dx) > abs(dy):
+            dmovement = np.array([dx, 0])
+        else:
+            dmovement = np.array([0, dy])
+
+        dmovement /= np.linalg.norm(dmovement)
+        return dmovement
+
+class SpiralIn():
+
+
+    def __init__(self, clockwise): # a boolean to change directions
+        self.clockwise = clockwise
+        self.type = "SpiralIn"
+
+    def move(self, ownX, ownY, px, py):
+        dmovement = np.array([px - ownX, py - ownY])
+        if np.linalg.norm(dmovement) > 2200: # the code exist due to escaping nature of some of the enemies that don't circle in fast enough if they're far away to the point some go outer bounds
+            dmovement /= np.linalg.norm(dmovement)
+            return  dmovement*5
+        perpDmovement = np.array([-dmovement[1], dmovement[0]])
+        if self.clockwise:
+            perpDmovement *= -1
+        dmovement = np.add(dmovement, perpDmovement)
+        dmovement /= np.linalg.norm(dmovement)
+        return  dmovement
+
+class Burster():
+
+
+    def __init__(self, delay, strength):
+        self.type = "Burster"
+        self.time = 0
+        self.delay = delay
+        self.strength = strength
+
+    def move(self, ownX, ownY, px, py):
+        self.time += 1
+        dmovement = np.array([px - ownX, py - ownY])
+        dmovement /= np.linalg.norm(dmovement)
+        if(self.time == self.delay):
+            self.time = 0
+            return dmovement*self.strength
+        else:
+            return  np.array([0,0])
+
+class Looker():
+
+    def __init__(self, position):
+        self.position = position
+
+    def move(self, ownX, ownY ,px, py): #player x and player y for px and py respectively position returns a 2d unit vector also
+        px += self.position[0]
+        py += self.position[1]
+        dmovement = np.array([px - ownX, py - ownY])
+        dmovement /= np.linalg.norm(dmovement) # I don't think this will ever be 0
+        return dmovement
+
+
+
 
 #endregion
 
@@ -35,33 +508,98 @@ pygame.init()
 
 #region functions
 
+#first function after 582 lines of code have been written
+def circleToWall(o, w): #code is too fundamentally different for different shapes so had make separate functions, a bigger function could manage these if needed
+    if CollisionObject.rectInCircle(w.physics.position[0], w.physics.position[1], w.collider,
+                                    o.physics.position[0], o.physics.position[1],
+                                    o.collider):
+        # collision has occurred
+        dy = (w.physics.position[1] + w.collider.height / 2) - o.physics.position[1]
+        dx = (w.physics.position[0] + w.collider.width / 2) - o.physics.position[0]
+        if abs(dy) / w.collider.height > abs(dx) / w.collider.width:
+            counterForce = -physicsObject.findResultant(o.physics)[1]
+            o.physics.addForce([0, counterForce])
+            o.physics.velocity[1] = 0
+            if dy > 0:
+                o.physics.position[1] = w.physics.position[1] - (o.collider.r + 1)
+            else:
+                o.physics.position[1] = w.physics.position[1] + w.collider.height + (
+                        o.collider.r + 1)
+        else:
+            counterForce = -physicsObject.findResultant(o.physics)[0]
+            o.physics.addForce([counterForce, 0])
+            o.physics.velocity[0] = 0
+            if dx > 0:
+                o.physics.position[0] = w.physics.position[0] - (o.collider.r + 1)
+            else:
+                o.physics.position[0] = w.physics.position[0] + w.collider.width + (
+                        o.collider.r + 1)
 
+def RectToWall(o, w): #code is too fundamentally different for different shapes so had make separate functions, a bigger function could manage these if needed
+    if CollisionObject.rectInRect(w.physics.position[0], w.physics.position[1], w.collider, o.physics.position[0], o.physics.position[1], o.collider):
+        # collision has occurred
+        dy = (w.physics.position[1] + w.collider.height / 2) - (o.physics.position[1] + o.collider.height / 2)
+        dx = (w.physics.position[0] + w.collider.width / 2) - (o.physics.position[0] + o.collider.width / 2)
+        if abs(dy) / w.collider.height > abs(dx) / w.collider.width:
 
+            counterForce = -physicsObject.findResultant(o.physics)[1]
+            o.physics.addForce([0, counterForce])
+            o.physics.velocity[1] = 0
+            if dy > 0:
+                o.physics.position[1] = w.physics.position[1] - (o.collider.height + 1)
+            else:
+                o.physics.position[1] = w.physics.position[1] + w.collider.height + 1
+        else:
+            counterForce = -physicsObject.findResultant(o.physics)[0]
+            o.physics.addForce([counterForce, 0])
+            o.physics.velocity[0] = 0
+            if dx > 0:
+                o.physics.position[0] = w.physics.position[0] - (o.collider.width + 1)
+            else:
+                o.physics.position[0] = w.physics.position[0] + w.collider.width + 1
 
+def transparentColour(colour, alpha):
+    return (colour[0], colour[1], colour[2], alpha)
 #endregion
 
 #region window setup
 width = 1200
 height = 800
 window = pygame.display.set_mode((width, height))
+surface = pygame.Surface((width,height), pygame.SRCALPHA)
 pygame.display.set_caption('Circle FIGHTS back')
 #endregion window setup
 
-#region renderSystem setup
-
-renderSystem = RenderSystem(window, width, height, 4)
-print("this one is running")
-#endregion
-
-
 #region constants and initial variables that we want to define
 #region colours       ( R , G , B , A ) the last one is a special value used for very specific things when needed
-
+colours = {
+    "black":          ( 0 , 0 , 0 ),
+    "white":          (255,255,255),
+    "grey":           (170,170,170),
+    "red":            (255, 0 , 0 ),
+    "green":          ( 0 ,255, 0 ),
+    "blue":           ( 0 , 0 ,255),
+    "dark red":       (122, 0 , 0 ),
+    "dark green":     ( 0 , 74, 0 ),
+    "wood":           (250,217,145),
+    "orange":         (252,139, 73),
+    "purple":         (102, 66,245),
+    "yellow":         (255,200, 0 ),
+    "wind":           (255,231,209),
+    "flame":          (255, 90, 0 ),
+    "electric":       (249,170, 0 ),
+    "steel":          (224,229,229),
+    "dark earth":     ( 46, 26, 0 ),
+    "earth":          ( 92, 55, 0 ),
+    "ice":            (181,255,254),
+    "icePlatform":    (209,255,254)
+}
 #endregion colours
 
 
 # region environment setup
-staticRenderObjects = [] # these are objects that'll never ever change there position except for scrolling purpose
+bg_colour = colours["white"]
+staticRenderObjects = [] # these are objects that'll never ever change there position except for scrollling purpose
 staticRenderObjects.append(RenderRect(-3000, height/2, 6000, 20, colours["wood"]))
 staticRenderObjects.append(RenderRect(width/2, -3000, 20, 6000, colours["wood"]))
 walls = []
@@ -139,7 +677,7 @@ enemyLocalInvincibility = 0.25
 enemyTypes = {"sizes":False, "burster":False, "spiralIn":False, "Looker":False}
 
 enemyProjectiles = []
-enemyProjectileLimit = 500 #lower this for better performance we gotta optimise this
+enemyProjectileLimit = 500 #lower this for better performance
 electricFields = [] # will be in transparent render objects
 IceFields = []
 
@@ -148,7 +686,7 @@ wallLimit = 500
 difficultySlider = inputdiffculty # how fast the game ramps up in difficulty the smaller the number the faster it ramps up
 powerUpSlider = inputPowerSlider # how common power ups are
                             #insert [title] card
-statuses = {"staminaRegen?":0.0, "invincible":0.0, "swingCD":0.0, "stunned":0.0, "dashing":0.0, "shootCD":0.0, "homingCD":0.0, "waveDisplay":0.0}  # gonna be a timer holding onto global cooldowns like if a player is stunned and can't move i might reconfigure this into an enum
+statuses = {"staminaRegen?":0, "invincible":0, "swingCD":0, "stunned":0, "dashing":0, "shootCD":0, "homingCD":0, "waveDisplay":0}  # gonna be a timer holding onto global cooldowns like if a player is stunned and can't move
 
 #endregion game stats
 
@@ -162,18 +700,12 @@ staminaBar = RenderCircle(width-(10+UIsize),3*(UIsize+10),UIsize*(playerStamina/
 scoreText = RenderText(10,10, 1200, UIsize, colours["purple"], int(1.5*UIsize), str(score))
 gameOverText = RenderText(200,300, 1200, 3*UIsize, colours["red"], int(3*UIsize), "Game Over")
 WaveText = RenderText(200,300, 1200, 3*UIsize, colours["purple"], int(2*UIsize), "Wave")
-waveTextState = False
 
-UI = []
-UI.append(maxHpBar)
-UI.append(hpBar)
-UI.append(maxStaminaBar)
-UI.append(staminaBar)
-UI.append(scoreText)
 #endregion UI
 
 
 clock = pygame.time.Clock()
+FPS = 60
 running = True
 
 
@@ -183,7 +715,9 @@ running = True
 
 #region main game loop
 while running:
+
     #region input detection
+
     #is an input active detection(important for movement and autofire)
     keys = pygame.key.get_pressed()
     if statuses["stunned"] == 0:
@@ -203,7 +737,7 @@ while running:
             if event.key == pygame.K_SPACE and playerStamina>0 and statuses["stunned"]==0:
                 if keys[K_a] or keys[K_d] or keys[K_s] or keys[K_w]:
                     playerStamina -= dashStaminaConsumption
-                    statuses["staminaRegen?"] = FPS * 0.25
+                    statuses["staminaRegen?"] = FPS*0.25
                     statuses["dashing"] = FPS * 0.25
                 if keys[K_a]:
                     playerObject.physics.addForce(np.array([-playerForce*50, 0]))
@@ -275,8 +809,6 @@ while running:
 
         if event.type == pygame.QUIT:
             running = False
-            pygame.quit()
-            sys.exit()
     #endregion input detection
 
     #region processing
@@ -294,8 +826,6 @@ while running:
                 walls.append(Entity(CollisionRect(random.randint(1, 300), random.randint(1, 300)), random.randint(-3000, 3000), random.randint(-3000, 3000), 1000, colours["black"]))
         WaveText.changeText("Wave " + str(wave))
         statuses["waveDisplay"] = FPS*2
-        waveTextState = True
-        UI.append(WaveText)
         playerHp = playerMaxHP # restore hp
         enemyProjectiles = []
         iceFields = []
@@ -437,10 +967,14 @@ while running:
     #endregion
 
     #region physics manipulation and wall collision
+    for i in enemies:
+        i.physics.addForce(i.physics.velocity*-dragFactor)
+        physicsObject.updatePhysics(i.physics)
     for i in powerUps:
         i.physics.addForce(i.physics.velocity*-dragFactor)
-        physicsSystem.updatePhysics(i, i.physics)
+        physicsObject.updatePhysics(i.physics)
     playerObject.physics.addForce(playerObject.physics.velocity*-playerDragFactor) # add drag force
+    # don't kill this code below
     for i in walls:
         if not keys[K_p]:
             circleToWall(playerObject, i) #no more chaotic looking code go refer to the function anyways all it does see the behaviour of an object trying to bash into a wall
@@ -454,7 +988,7 @@ while running:
 
     #region enemy collision logic
     for i in enemies:
-        if CollisionSystem.rectInCircle(i.physics.position[0], i.physics.position[1], i.collider, playerObject.physics.position[0], playerObject.physics.position[1], playerObject.collider):
+        if CollisionObject.rectInCircle(i.physics.position[0], i.physics.position[1], i.collider, playerObject.physics.position[0], playerObject.physics.position[1], playerObject.collider):
             if statuses["invincible"]==0:
                 statuses["invincible"] = FPS*0.8
                 playerHp -= i.dmg
@@ -672,12 +1206,12 @@ while running:
         remove = False
         if i.id[0] == "b" or i.id[0] == "h":
             for j in walls:
-                if CollisionSystem.rectInCircle(j.physics.position[0], j.physics.position[1], j.collider, i.physics.position[0], i.physics.position[1], i.collider):
+                if CollisionObject.rectInCircle(j.physics.position[0], j.physics.position[1], j.collider, i.physics.position[0], i.physics.position[1], i.collider):
                     remove = True
                     break
             # detect enemies
         for j in enemies[:]:
-            if CollisionSystem.rectInCircle(j.physics.position[0], j.physics.position[1], j.collider, i.physics.position[0], i.physics.position[1], i.collider):
+            if CollisionObject.rectInCircle(j.physics.position[0], j.physics.position[1], j.collider, i.physics.position[0], i.physics.position[1], i.collider):
                 # enemy has been hit
                 if not i.id in j.hits.keys():
                     if i.id[0] == "m":
@@ -716,13 +1250,13 @@ while running:
 
     for i in fire_projectiles: # electric and fire interaction
         for j in electricFields:
-            if CollisionSystem.rectInRect(i.physics.position[0], i.physics.position[1], i.collider, j.physics.position[0], j.physics.position[1], j.collider):
+            if CollisionObject.rectInRect(i.physics.position[0], i.physics.position[1], i.collider, j.physics.position[0], j.physics.position[1], j.collider):
                 i.direction *= 1.2 # we will let them projectiles accelerate in the field
 
     for i in wind_projectiles[:]:
         remove = False
         for j in fire_projectiles[:]:
-            if CollisionSystem.rectInRect(i.physics.position[0], i.physics.position[1], i.collider, j.physics.position[0], j.physics.position[1], j.collider):
+            if CollisionObject.rectInRect(i.physics.position[0], i.physics.position[1], i.collider, j.physics.position[0], j.physics.position[1], j.collider):
                 # fire and wind interaction when there bullets collide giga flame bullet is spawned in
                 newDirection = np.add(i.direction, j.direction)
                 newDirection /= 4
@@ -739,7 +1273,7 @@ while running:
 
     for i in enemyProjectiles[:]:
         remove = False
-        if CollisionSystem.rectInCircle(i.physics.position[0], i.physics.position[1], i.collider, playerObject.physics.position[0], playerObject.physics.position[1], playerObject.collider):
+        if CollisionObject.rectInCircle(i.physics.position[0], i.physics.position[1], i.collider, playerObject.physics.position[0], playerObject.physics.position[1], playerObject.collider):
             if statuses["invincible"]==0:
                 statuses["invincible"] = FPS*0.8
                 playerHp -= i.dmg
@@ -747,11 +1281,11 @@ while running:
                 playerObject.physics.addForce(kbDirection*i.kb)
                 remove = True
         for j in walls:
-            if CollisionSystem.rectInRect(i.physics.position[0], i.physics.position[1], i.collider, j.physics.position[0], j.physics.position[1], j.collider):
+            if CollisionObject.rectInRect(i.physics.position[0], i.physics.position[1], i.collider, j.physics.position[0], j.physics.position[1], j.collider):
                 remove = True
         if i.id != "greatFlame":
             for j in playerProjectiles:
-                if j.id[0] == "m" and CollisionSystem.rectInCircle(i.physics.position[0], i.physics.position[1], i.collider, j.physics.position[0], j.physics.position[1], j.collider):
+                if j.id[0] == "m" and CollisionObject.rectInCircle(i.physics.position[0], i.physics.position[1], i.collider, j.physics.position[0], j.physics.position[1], j.collider):
                     remove = True
         if remove:
             enemyProjectiles.remove(i)
@@ -768,7 +1302,7 @@ while running:
 
     #field management, psst electric enemies are the only ones that have this property..... this ain't true anymore ice also have fields
     for i in electricFields:
-        if CollisionSystem.rectInCircle(i.physics.position[0], i.physics.position[1], i.collider, playerObject.physics.position[0], playerObject.physics.position[1], playerObject.collider):
+        if CollisionObject.rectInCircle(i.physics.position[0], i.physics.position[1], i.collider, playerObject.physics.position[0], playerObject.physics.position[1], playerObject.collider):
             if statuses["invincible"]==0:
                 statuses["invincible"] = FPS*0.8
                 statuses["stunned"] = FPS*1.6
@@ -777,7 +1311,7 @@ while running:
 
     playerDragFactor = 1
     for i in iceFields:
-        if CollisionSystem.rectInCircle(i.physics.position[0], i.physics.position[1], i.collider, playerObject.physics.position[0], playerObject.physics.position[1], playerObject.collider):
+        if CollisionObject.rectInCircle(i.physics.position[0], i.physics.position[1], i.collider, playerObject.physics.position[0], playerObject.physics.position[1], playerObject.collider):
             playerDragFactor = 0
 
     # enemy management
@@ -792,7 +1326,7 @@ while running:
             #generate a powerup if can happen
             if random.randint(1,powerUpSlider)==1:
                 Atype = random.choice([("homing",colours["yellow"]), ("bullet",colours["blue"]), ("melee",colours["orange"]), ("stamina",colours["green"]), ("health",colours["red"])])
-                powerUps.append(PowerUP(CollisionCircle(20), i.physics.position[0], i.physics.position[1], 20, Atype[1], Atype[0]))
+                powerUps.append(powerUP(CollisionCircle(20),i.physics.position[0], i.physics.position[1], 20, Atype[1], Atype[0]))
                 powerUps[-1].physics.addForce(np.array([random.uniform(-1,1),random.uniform(-1,1)])*200)
 
 
@@ -806,7 +1340,7 @@ while running:
 
     # powerup management and two seperate loops cuase i don't wanna deal with double deletetion
     for i in powerUps[:]:
-        if CollisionSystem.circleInCircle(i.physics.position[0], i.physics.position[1], i.collider, playerObject.physics.position[0], playerObject.physics.position[1], playerObject.collider):
+        if CollisionObject.circleInCircle(i.physics.position[0], i.physics.position[1], i.collider, playerObject.physics.position[0], playerObject.physics.position[1], playerObject.collider):
             # the objects have collided
             for a in range(random.randint(1,10)):
                 randSize = random.randint(1, 5)
@@ -904,39 +1438,75 @@ while running:
     #endregion processing
 
     #region Rendering Section
+    """note always draw the background first then move your way to the foreground"""
+    # the list below contains current objects we want to draw into the scene
+    renderObjects = []
+    transparentRenderObjects = []
+    #if someone knows how to mass add lists let me know cause uhh yeah
+    for i in staticRenderObjects: # strange bug happened that causes some weird things to occur so need to loop and add them
+        RenderObject.scroll(i, playerObject.physics.position[0]-(width/2), playerObject.physics.position[1]-(height/2))
+        renderObjects.append(i)
+    for i in iceFields:
+        j = i.returnRender()
+        RenderObject.scroll(j, playerObject.physics.position[0] - (width / 2), playerObject.physics.position[1] - (height / 2))
+        renderObjects.append(j)
+    for i in walls:
+        j = i.returnRender()
+        RenderObject.scroll(j, playerObject.physics.position[0] - (width / 2),playerObject.physics.position[1] - (height / 2))
+        renderObjects.append(j)
+    for i in enemies:
+        j = i.returnRender() # I love this method
+        RenderObject.scroll(j, playerObject.physics.position[0] - (width / 2),playerObject.physics.position[1] - (height / 2))
+        renderObjects.append(j)
+    for i in playerProjectiles:
+        j = i.returnRender()  # I love this method
+        RenderObject.scroll(j, playerObject.physics.position[0] - (width / 2),playerObject.physics.position[1] - (height / 2))
+        renderObjects.append(j)
+    for i in enemyProjectiles:
+        j = i.returnRender()  # I love this method
+        RenderObject.scroll(j, playerObject.physics.position[0] - (width / 2),playerObject.physics.position[1] - (height / 2))
+        renderObjects.append(j)
+    for i in electricFields:
+        j = i.returnRender() # I love this method
+        RenderObject.scroll(j, playerObject.physics.position[0] - (width / 2), playerObject.physics.position[1] - (height / 2))
+        transparentRenderObjects.append(j)
+    for i in powerUps:
+        j = i.returnRender()  # I love this method
+        RenderObject.scroll(j, playerObject.physics.position[0] - (width / 2),
+        playerObject.physics.position[1] - (height / 2))
+        renderObjects.append(j)
     if statuses["stunned"]!=0: # probably not the right place to implement this but it's a visual issue
         offsetX = random.randint(-3,3)
         offsetY = random.randint(-3,3)
     else:
         offsetX = 0
         offsetY = 0
-    if statuses["waveDisplay"] == 0 and waveTextState:
-        waveTextState=False
-        UI.remove(WaveText)
-    # if someone knows how to mass add lists let me know cause uhh yeah
-    #jokes on you figured it out 😈 (uhh chatgpt suggested it)
-    """note always draw the background first then move your way to the foreground or just assign them the correct layer number(code runs faster if you do numbers in order)"""
-    render_batches =  [[staticRenderObjects, True, 0],
-                       [iceFields, True, 0],
-                       [walls, True, 0],
-                       [enemies, True, 0],
-                       [playerProjectiles,True,0],
-                       [enemyProjectiles,True,0],
-                       [powerUps, True, 0],
-                       [[RenderCircle((width/2)+offsetX, (height/2)+offsetY, 20, colours["red"])], False, 0], # this is our player sprite can customise our player sprite later on by making them their own list
-                       [electricFields,True,1],
-                       [effects, True, 1],
-                       [UI, False, 2]]
-    renderSystem.drawScreen(render_batches, playerObject.physics.position[0] - (width / 2), playerObject.physics.position[1] - (height / 2))
+    renderObjects.append(RenderCircle((width/2)+offsetX, (height/2)+offsetY, 20, colours["red"]))
+    for i in effects:
+        j = i.returnRender()  # I love this method
+        RenderObject.scroll(j, playerObject.physics.position[0] - (width / 2),playerObject.physics.position[1] - (height / 2))
+        transparentRenderObjects.append(j)
+     # our goofy player sprite
+    transparentRenderObjects.append(maxHpBar)
+    transparentRenderObjects.append(hpBar)
+    transparentRenderObjects.append(maxStaminaBar)
+    transparentRenderObjects.append(staminaBar)
+    transparentRenderObjects.append((scoreText))
+    if statuses["waveDisplay"] != 0:
+        transparentRenderObjects.append(WaveText)
+    window.fill(bg_colour)
+    surface.fill((0,0,0,0))
+    RenderObject.render(window, renderObjects)
+    RenderObject.render(surface, transparentRenderObjects)
+    window.blit(surface, (0,0))
     pygame.display.flip()
     clock.tick(FPS)
     #endregion Rendering Section
 #endregion main game loop
 
 #region endgame aftermath
-UI.append(gameOverText)
-
-renderSystem.drawScreen(render_batches, playerObject.physics.position[0] - (width / 2), playerObject.physics.position[1] - (height / 2))
+renderObjects.append(gameOverText)
+RenderObject.render(window, renderObjects)
 pygame.display.flip()
 running = True
 while running:
@@ -945,4 +1515,4 @@ while running:
             running = False
 
 
-#endregion endgame aftermath
+#endregion endgame afterx
