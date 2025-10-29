@@ -17,6 +17,7 @@ class Enemy(Component): # A glorified tag for now(like what do i put here?)
     def __init__(self):
         super().__init__("enemy")
 
+#make sure to allow customisation for specific enemies and add adjust local drag factors for more interesting behaviours like(acceleration)
 def spawnEnemy(ecs, x, y, width, height, mass, speed, kb, damage, type, colour):
     eid = ecs.create_entity()
     ecs.add_component(eid, CollisionRect(width, height))
@@ -36,16 +37,18 @@ def spawnEnemy(ecs, x, y, width, height, mass, speed, kb, damage, type, colour):
     elif type=="spiralin":
         ecs.add_component(eid, SpiralIn())
     elif type=="burster":
-        ecs.add_component(eid, Burster(random.randint(1,3),10))
+        ecs.add_component(eid, Burster(random.randint(1,5),10))
         motorforce.strength = speed*speed
     elif type=="looker":
         ecs.add_component(eid, Looker([random.randint(-300,300), random.randint(-300,300)]))
+    elif type=="teleporter":
+        ecs.add_component(eid, Teleporter(1, 1000))
+    ecs.add_component(eid, StraightPursuer())
     #else dummy AI ig
 
 #endregion
 
 #region movement patterns
-#le components
 class Pursuer(Component):  #an AI that always chases the player
 
     def __init__(self):
@@ -156,10 +159,32 @@ class LookerSystem:
             lookPos = Vector.Add(playerPos.position, enemyLooker.relPosition)
             direction = Vector.Unit(Vector.Subtract(lookPos, enemyPos.position))
             enemyPhysics.forces.append(Vector.scalarMult(enemyMotor.strength, direction))
-#le systems
-
-
 #endregion
+
+class Teleporter(Component):
+
+    def __init__(self, delay, distance):
+        super().__init__("teleporter")
+        self.elapsed = 0
+        self.delay = delay*FPS
+        self.distance = distance # let's say 10 for now
+
+
+class TeleporterSystem:
+
+    def tick(self, ecs: ECS):
+        eid = next(iter(ecs.query("player")))
+        playerPos = ecs.get_component(eid, "position")
+        for id in ecs.query("teleporter"):
+            enemyPos =  ecs.get_component(id, "position")
+            enemytele =  ecs.get_component(id, "teleporter")
+            enemytele.elapsed += 1
+            if enemytele.delay <= enemytele.elapsed:
+                enemytele.elapsed = 0
+                direction = Vector.Unit(Vector.Subtract(playerPos.position, enemyPos.position))
+                enemyPos.position = Vector.Add(enemyPos.position, Vector.scalarMult(enemytele.distance,direction))
+
+
 
 #region element components
 

@@ -19,6 +19,8 @@ from CollisionResolvement import *
 from Damage import *
 from Health import *
 from Enemy import *
+from UI import *
+from Stamina import *
 
 
 
@@ -61,10 +63,9 @@ def spawnTriangle(ecs: ECS):
     ecs.add_component(eid, CollisionPolygon(points))
     ecs.add_component(eid, RenderPolygon(points, colours["orange"], True, 0))
     ecs.add_component(eid, Position(random.randint(-3000, 3000), random.randint(-1500, 1500)))
-    ecs.add_component(eid, Velocity(-1, 1))
     ecs.add_component(eid, Physics(20))
     ecs.add_component(eid, MotorForce(random.randint(1,10)))
-    ecs.add_component(eid, RigidBody())
+    ecs.add_component(eid, StaticBody())
     ecs.add_component(eid, Material(0))
 
 
@@ -104,7 +105,7 @@ def main():
     ecs = ECS()
     remover_system = RemoverSystem()
     input_system = InputSystem()
-    render_system = RenderSystem(window, width, height, 3, renderCenter, colours["white"])
+    render_system = RenderSystem(window, width, height, 4, renderCenter, colours["white"])
     collision_system = CollisionSystem(100)
     collision_resolvement_system = CollisionResolvementSystem()
     damage_system = DamageSystem()
@@ -113,34 +114,40 @@ def main():
     spiral_in_system = SpiralInSystem()
     burster_system = BursterSystem()
     looker_system = LookerSystem()
+    teleporter_system = TeleporterSystem()
     physics_system = PhysicsSystem(ecs, drag=1)
     player_system = PlayerSystem()
+    stamina_system = StaminaSystem()
     fps_tracker_system = FPSTrackerSystem()
+    ui_system = UISystem()
     aura_system = AuraSystem()
     effect_system = EffectSystem()
     # endregion
 
-    for i in range(200):
+    for i in range(0):
          spawnRect(ecs)
-    for i in range(100):
-        pass
-     #   spawnEnemy(ecs, random.randint(-3000,3000), random.randint(-3000,3000), 20, 20, 20, 5, 100, 10, "looker", colours["grey"])
-    for i in range(100):
+    for i in range(0):
+       spawnEnemy(ecs, random.randint(-3000,3000), random.randint(-3000,3000), 20, 20, 20, 1, 100, 1, "teleporter", colours["grey"])
+    for i in range(1000):
         spawnCircle(ecs)
-    #     spawnTriangle(ecs)
-    player_system.spawnPlayer(ecs)
+    for i in range (0):
+        spawnTriangle(ecs)
+    spawnUI(ecs, width, height, 50)
+    spawnPlayer(ecs)
 
     fps_tracker_system.deployFPSText(ecs)
     while True:
         input_system.tick(ecs)
         events = collision_system.tick(ecs)
         player_system.tick(ecs)
+        stamina_system.tick(ecs)
         #region enemy movement
         pursuer_system.tick(ecs)
         straight_pursuer_system.tick(ecs)
         spiral_in_system.tick(ecs)
         burster_system.tick(ecs)
         looker_system.tick(ecs)
+        teleporter_system.tick(ecs)
         #endregion
         collision_resolvement_system.tick(ecs, events)
         damage_system.tick(ecs, events)
@@ -150,6 +157,7 @@ def main():
         fps_tracker_system.tick(ecs, clock)
         aura_system.tick(ecs)
         effect_system.tick(ecs)
+        ui_system.tick(ecs)
         render_system.tick(ecs, position)
         #endregion
         remover_system.tick(ecs)

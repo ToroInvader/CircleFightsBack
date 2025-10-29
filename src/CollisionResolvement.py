@@ -128,8 +128,6 @@ class CollisionResolvementSystem:
         closestY = max(top, min(s1py, top+s2c.height))
         BA = Vector.Subtract([s1px, s1py], [closestX, closestY])
         dist = Vector.Magnitude(BA)
-        print(dist, "dist")
-        print(s1c.r)
         if dist == 0: # if true we know center is inside the square
             dx = min(abs(s1px - left), abs(left + s2c.width - s1px))
             dy = min(abs(s1py - top), abs(top+s2c.height - s1py))
